@@ -1,15 +1,15 @@
-const NUM_OF_INSTRUCTIONS: usize = 3;
+const NUM_OF_INSTRUCTIONS: usize = 10;
 const MEMORY_SIZE_KB: usize = 16000;
 
 #[derive(Copy, Clone)]
 #[derive(Eq, PartialEq)]
 #[derive(Debug)]
 struct Flags {
-    z: u8,
-    s: u8,
-    p: u8,
-    cy: u8,
-    ac: u8,
+    z: bool,
+    s: bool,
+    p: bool,
+    cy: bool,
+    ac: bool,
     pad: u8,
 }
 
@@ -43,6 +43,22 @@ pub struct Cpu {
     int_enable: u8,
 }
 
+// Return true if even parity
+fn parity(num: u16, size: u8) -> bool {
+    let mut count: u8 = 0;
+
+    for _ in 0..size {
+        if (num & 0x01) == 0x01 { count = count + 1 }
+        num >> 1;
+    }
+
+    0 == (count & 0x01)
+}
+
+fn unimplemented_instruction() {
+    println!("Implement me");
+}
+
 impl Cpu {
     pub fn new() -> Cpu {
         use Instruction as i;
@@ -51,9 +67,9 @@ impl Cpu {
             d: 1, e: 1, h: 1,
             l: 1, sp: 1, pc: 0,
             memory: [0; MEMORY_SIZE_KB],
-            flags: Flags { z: 1, s: 1, p: 1, cy: 1, ac: 1, pad: 3 },
+            flags: Flags { z: true, s: true, p: true, cy: true, ac: true, pad: 3 },
             instructions: [
-                i { name: "NOP", operation: Cpu::nop, cycles: 1 }, i { name: "LXI B,D16", operation: Cpu::lxi_b_d16, cycles: 3 }, i { name: "STAX B", operation: Cpu::stax_b, cycles: 2 },
+                i { name: "NOP", operation: Cpu::nop, cycles: 1 }, i { name: "LXI B,D16", operation: Cpu::lxi_b_d16, cycles: 3 }, i { name: "STAX B", operation: Cpu::stax_b, cycles: 2 }, i { name: "INX B", operation: Cpu::inx_b, cycles: 1 }, i { name: "INR B", operation: Cpu::inr_b, cycles: 1 }, i { name: "DCR B", operation: Cpu::dcr_b, cycles: 1 }, i { name: "MVI B,D8", operation: Cpu::mvi_b_d8, cycles: 2 }, i { name: "RLC 1", operation: Cpu::rlc_1, cycles: 1 }, i { name: "NOP", operation: Cpu::nop, cycles: 1 }, i { name: "DAD B", operation: Cpu::dad_b, cycles: 3 },
             ],
             int_enable: 0,
         }
@@ -83,6 +99,44 @@ impl Cpu {
         let addr: usize = (self.b << 8 | self.c) as usize;
         self.memory[addr] = self.a;
         return
+    }
+
+    // 0x03	INX B	1		BC <- BC+1
+    fn inx_b(&mut self) {
+        unimplemented_instruction();
+    }
+
+    // 0x04	INR B	1	Z, S, P, AC	B <- B+1
+    fn inr_b(&mut self) {
+        unimplemented_instruction();
+    }
+
+    // 0x05	DCR B	1	Z, S, P, AC	B <- B-1
+    fn dcr_b(&mut self) {
+        self.b -= 1;
+        self.flags.z = (0 == self.b);
+        println!("self.b {}", self.b);
+        self.flags.s = (0x80 == (self.b & 0x80));
+        self.flags.p = parity(self.b, 8);
+    }
+
+    // 0x06	MVI B, D8	2		B <- byte 2
+    fn mvi_b_d8(&mut self) {
+        self.b = self.memory[self.pc + 1];
+        self.pc += 1;
+    }
+
+    // 0x07	RLC	1	CY	A = A << 1; bit 0 = prev bit 7; CY = prev bit 7
+    fn rlc_1(&mut self) {
+        return
+    }
+
+    // 0x09	DAD B	1	CY	HL = HL + BC
+    fn dad_b(&mut self) {
+        let res: u32 = (self.h << 8 | self.l) as u32 + (self.b << 8 | self.c) as u32;
+        self.h = (res & 0xff00) as u16 >> 8;
+        self.l = (res & 0x00ff) as u16;
+        self.flags.cy = (res as u32 & 0xffff0000) > 0;
     }
 
     fn process_instruction(&mut self) {
@@ -142,6 +196,130 @@ mod tests {
 
         assert_eq!(cpu_before.flags, cpu.flags);
         assert_eq!(cpu.memory[258], cpu_before.a);
+    }
+
+    #[test]
+    fn inx_b() {
+        // TODO
+        assert_eq!(1, 1);
+    }
+
+    #[test]
+    fn inr_b() {
+        // TODO
+        assert_eq!(1, 1);
+    }
+
+    #[test]
+    fn dcr_b_handles_zero_result() {
+        let mut cpu = Cpu::new();
+        cpu.memory[0] = 0x05;
+        cpu.b = 1;
+        let cpu_before = cpu.clone();
+
+        cpu.process_instruction();
+
+        assert_eq!(cpu_before.flags.z, cpu.flags.z);
+        assert_ne!(cpu_before.flags.s, cpu.flags.s);
+        assert_eq!(cpu_before.flags.p, cpu.flags.p);
+        assert_eq!(cpu_before.flags.cy, cpu.flags.cy);
+        assert_eq!(cpu_before.b, cpu.b + 1);
+    }
+
+    #[test]
+    fn drc_b_handles_non_zero_result() {
+        let mut cpu = Cpu::new();
+        cpu.memory[0] = 0x05;
+        cpu.b = 2;
+        let cpu_before = cpu.clone();
+        assert_eq!(true, cpu_before.flags.s);
+
+        cpu.process_instruction();
+
+        assert_eq!(false, cpu.flags.z);
+        assert_ne!(cpu_before.flags.s, cpu.flags.s);
+        assert_eq!(cpu_before.flags.p, cpu.flags.p);
+        assert_eq!(cpu_before.flags.cy, cpu.flags.cy);
+        assert_eq!(cpu_before.b, cpu.b + 1);
+        assert_eq!(1, 1);
+    }
+
+    #[test]
+    fn drc_b_handles_msb_set() {
+        let mut cpu = Cpu::new();
+        cpu.memory[0] = 0x05;
+        cpu.b = 0xFF;
+        let cpu_before = cpu.clone();
+
+        cpu.process_instruction();
+
+        assert_eq!(false, cpu.flags.z);
+        assert_eq!(cpu_before.flags.s, cpu.flags.s);
+        assert_eq!(cpu_before.flags.p, cpu.flags.p);
+        assert_eq!(cpu_before.flags.cy, cpu.flags.cy);
+    }
+
+    #[test]
+    fn mvi_b_d8_moves_data_one_to_b() {
+        let mut cpu = Cpu::new();
+        cpu.memory[0] = 0x06;
+        cpu.memory[1] = 0xFF;
+        let cpu_before = cpu.clone();
+
+        cpu.process_instruction();
+
+        assert_eq!(cpu_before.flags, cpu.flags);
+        assert_eq!(cpu_before.memory[1], cpu.b);
+    }
+
+    #[test]
+    fn rlc_one_works() {
+        // TODO
+        assert_eq!(1, 1);
+    }
+
+    #[test]
+    fn dad_b_sets_carry() {
+        let mut cpu = Cpu::new();
+        cpu.memory[0] = 0x09;
+        cpu.h = 0xff;
+        cpu.l = 0x01;
+        cpu.b = 0x00;
+        cpu.c = 0xff;
+        let cpu_before = cpu.clone();
+
+        cpu.process_instruction();
+
+        assert_eq!(cpu_before.flags.z, cpu.flags.z);
+        assert_eq!(cpu_before.flags.s, cpu.flags.s);
+        assert_eq!(cpu_before.flags.p, cpu.flags.p);
+        assert_eq!(cpu_before.flags.cy, cpu.flags.cy);
+        assert_eq!(cpu.h, 0x00);
+        assert_eq!(cpu.l, 0x00);
+        assert_eq!(cpu_before.b, cpu.b);
+        assert_eq!(cpu_before.c, cpu.c);
+    }
+
+    #[test]
+    fn dad_b_no_carry() {
+        let mut cpu = Cpu::new();
+        cpu.memory[0] = 0x09;
+        cpu.h = 0x01;
+        cpu.l = 0x01;
+        cpu.b = 0x01;
+        cpu.c = 0x01;
+        let cpu_before = cpu.clone();
+
+        cpu.process_instruction();
+
+        assert_eq!(cpu_before.flags.z, cpu.flags.z);
+        assert_eq!(cpu_before.flags.s, cpu.flags.s);
+        assert_eq!(cpu_before.flags.p, cpu.flags.p);
+        assert_eq!(false, cpu.flags.cy);
+        assert_eq!(cpu.h, 0x02);
+        assert_eq!(cpu.l, 0x02);
+        assert_eq!(cpu_before.b, cpu.b);
+        assert_eq!(cpu_before.c, cpu.c);
     }
 }
 
