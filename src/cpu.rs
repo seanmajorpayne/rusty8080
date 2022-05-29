@@ -1,4 +1,4 @@
-const NUM_OF_INSTRUCTIONS: usize = 2;
+const NUM_OF_INSTRUCTIONS: usize = 3;
 const MEMORY_SIZE_KB: usize = 16000;
 
 #[derive(Copy, Clone)]
@@ -26,17 +26,18 @@ impl Instruction {
     }
 }
 
+#[derive(Copy, Clone)]
 pub struct Cpu {
-    a: u8,                          // Registers
-    b: u8,                          //
-    c: u8,                          //
-    d: u8,                          //
-    e: u8,                          //
-    h: u8,                          //
-    l: u8,                          //
+    a: u16,                          // Registers
+    b: u16,                          //
+    c: u16,                          //
+    d: u16,                          //
+    e: u16,                          //
+    h: u16,                          //
+    l: u16,                          //
     sp: u16,                        // Stack Pointer
     pc: usize,                      // Program Counter
-    memory: [u8; MEMORY_SIZE_KB],
+    memory: [u16; MEMORY_SIZE_KB],
     instructions: [Instruction; NUM_OF_INSTRUCTIONS],
     flags: Flags,
     int_enable: u8,
@@ -52,7 +53,7 @@ impl Cpu {
             memory: [0; MEMORY_SIZE_KB],
             flags: Flags { z: 1, s: 1, p: 1, cy: 1, ac: 1, pad: 3 },
             instructions: [
-                i { name: "NOP", operation: Cpu::nop, cycles: 1 }, i { name: "LXI B,D16", operation: Cpu::lxi_b_d16, cycles: 3 },
+                i { name: "NOP", operation: Cpu::nop, cycles: 1 }, i { name: "LXI B,D16", operation: Cpu::lxi_b_d16, cycles: 3 }, i { name: "STAX B", operation: Cpu::stax_b, cycles: 2 },
             ],
             int_enable: 0,
         }
@@ -62,28 +63,26 @@ impl Cpu {
         self.process_instruction();
     }
 
-    // Address Modes
+    // Instructions
 
-    // imp - Address Mode: Implied
-    // No additional data needed for the instruction
-    fn imp(&self) {
+    // 0x00	NOP	1
+    // TODO: Handle illegal opcodes
+    fn nop(&mut self) {
         return
     }
 
-    // Instructions
-
-    // NOP Instruction
-    // TODO: Handle illegal opcodes
-    fn nop(&mut self) {
-        println!("NOP");
-        self.c = 14;
-    }
-
-    // LXI B,D16
+    // 0x01	LXI B,D16	3		B <- byte 3, C <- byte 2
     fn lxi_b_d16(&mut self) {
         self.c = self.memory[self.pc + 1];
         self.b = self.memory[self.pc + 2];
         self.pc += 2;
+    }
+
+    // 0x02	STAX B	1		(BC) <- A
+    fn stax_b(&mut self) {
+        let addr: usize = (self.b << 8 | self.c) as usize;
+        self.memory[addr] = self.a;
+        return
     }
 
     fn process_instruction(&mut self) {
@@ -93,14 +92,18 @@ impl Cpu {
 
         println!("{}", instruction.name);
         instruction.call(self);
+        self.pc += 1;
     }
 }
 
-/*mod tests {
+mod tests {
     use super::Cpu;
 
+    const DATA_ONE: u16 = 1;
+    const DATA_TWO: u16 = 2;
+
     #[test]
-    fn opcode_00_increments_program_counter() {
+    fn nop_increments_program_counter() {
         let mut cpu = Cpu::new();
         let cpu_before = cpu.clone();
 
@@ -108,7 +111,37 @@ impl Cpu {
 
         assert_eq!(cpu_before.flags, cpu.flags);
         assert_eq!(cpu_before.memory, cpu.memory);
-        assert_eq!(cpu_before.pc, cpu.pc - 1)
+        assert_eq!(cpu_before.pc, cpu.pc - 1);
+    }
+
+    #[test]
+    fn lxi_b_d16_changes_c_and_b() {
+        let mut cpu = Cpu::new();
+        cpu.memory[0] = 0x01;
+        cpu.memory[1] = DATA_ONE;
+        cpu.memory[2] = DATA_TWO;
+        let cpu_before = cpu.clone();
+
+        cpu.process_instruction();
+
+        assert_eq!(cpu_before.flags, cpu.flags);
+        assert_eq!(cpu_before.memory, cpu.memory);
+        assert_eq!(cpu_before.memory[1], cpu.c);
+        assert_eq!(cpu_before.pc, cpu.pc - 3);
+    }
+
+    #[test]
+    fn stax_b_moves_a_into_addr_bc() {
+        let mut cpu = Cpu::new();
+        cpu.memory[0] = 0x02;
+        cpu.b = 1;
+        cpu.c = 2;
+        let cpu_before = cpu.clone();
+
+        cpu.process_instruction();
+
+        assert_eq!(cpu_before.flags, cpu.flags);
+        assert_eq!(cpu.memory[258], cpu_before.a);
     }
 }
-*/
+
