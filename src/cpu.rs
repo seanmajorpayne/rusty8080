@@ -133,9 +133,9 @@ impl Cpu {
 
     // 0x09	DAD B	1	CY	HL = HL + BC
     fn dad_b(&mut self) {
-        let res: u16 = (self.h << 8 | self.l) + (self.b << 8 | self.c);
-        self.h = (res & 0xff00) >> 8;
-        self.l = (res & 0x00ff);
+        let res: u32 = (self.h << 8 | self.l) as u32 + (self.b << 8 | self.c) as u32;
+        self.h = (res & 0xff00) as u16 >> 8;
+        self.l = (res & 0x00ff) as u16;
         self.flags.cy = (res as u32 & 0xffff0000) > 0;
     }
 
@@ -279,8 +279,47 @@ mod tests {
     }
 
     #[test]
-    fn dad_b_works() {
-        // TODO
+    fn dad_b_sets_carry() {
+        let mut cpu = Cpu::new();
+        cpu.memory[0] = 0x09;
+        cpu.h = 0xff;
+        cpu.l = 0x01;
+        cpu.b = 0x00;
+        cpu.c = 0xff;
+        let cpu_before = cpu.clone();
+
+        cpu.process_instruction();
+
+        assert_eq!(cpu_before.flags.z, cpu.flags.z);
+        assert_eq!(cpu_before.flags.s, cpu.flags.s);
+        assert_eq!(cpu_before.flags.p, cpu.flags.p);
+        assert_eq!(cpu_before.flags.cy, cpu.flags.cy);
+        assert_eq!(cpu.h, 0x00);
+        assert_eq!(cpu.l, 0x00);
+        assert_eq!(cpu_before.b, cpu.b);
+        assert_eq!(cpu_before.c, cpu.c);
+    }
+
+    #[test]
+    fn dad_b_no_carry() {
+        let mut cpu = Cpu::new();
+        cpu.memory[0] = 0x09;
+        cpu.h = 0x01;
+        cpu.l = 0x01;
+        cpu.b = 0x01;
+        cpu.c = 0x01;
+        let cpu_before = cpu.clone();
+
+        cpu.process_instruction();
+
+        assert_eq!(cpu_before.flags.z, cpu.flags.z);
+        assert_eq!(cpu_before.flags.s, cpu.flags.s);
+        assert_eq!(cpu_before.flags.p, cpu.flags.p);
+        assert_eq!(false, cpu.flags.cy);
+        assert_eq!(cpu.h, 0x02);
+        assert_eq!(cpu.l, 0x02);
+        assert_eq!(cpu_before.b, cpu.b);
+        assert_eq!(cpu_before.c, cpu.c);
     }
 }
 
