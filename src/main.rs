@@ -4,4 +4,5 @@ fn main() {
     let mut cpu = cpu::Cpu::new();
     cpu.run();
     kdf();
+    qr();
 }
